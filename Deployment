@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  ECRRepository:
+    Type: String
+    Description: Name of the ECR
+
+  ECRRepositoryURL:
+    Type: String
+    Description: URL of the ECR repository
+
+  Version:
+    Type: String
+    Description: Repo Version
+
+  Service:
+    Type: String
+    Description: Name of the Service
+
+Resources:
+
+  ECSLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/Mama-Service
+      RetentionInDays: 30
+
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
+    Properties:
+      Family: Mama-Service
+      RequiresCompatibilities:
+        - FARGATE
+      Memory: '2048'
+      Cpu: '1024'
+      NetworkMode: awsvpc
+      ExecutionRoleArn: arn:aws:iam::484907512368:role/ecsTaskExecutionRole
+      ContainerDefinitions:
+        - Name: Mama-Service
+          Image: !Join
+            - ''
+            - - !Ref ECRRepositoryURL
+              - ':'
+              - !Ref Version
+          Memory: 2048
+          PortMappings:
+            - ContainerPort: 8080
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: 'true'
+              awslogs-group: !Ref ECSLogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: ecs
+          Environment:
+            - Name: TZ
+              Value: Europe/London
+            - Name: ASPNETCORE_ENVIRONMENT
+              Value: Production
+      Tags:
+        - Key: costCenter
+          Value: Mama-Service
+
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: Delhi-Cluster
+      ServiceName: Mama-Service
+      TaskDefinition: !Ref TaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - sg-0e99bb24bc74cdb15
+          Subnets:
+            - subnet-0c58d856d6d1ebf35
+            - subnet-0faf317553cd84461
+      CapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+      PropagateTags: TASK_DEFINITION
+      HealthCheckGracePeriodSeconds: 0
+      Tags:
+        - Key: costCenter
+          Value: Mama-Service
+
+  ScalingPolicyCPU:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: ECSServiceScalingPolicyCPU
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ECSAutoscalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 10
+        TargetValue: 60
+
+  ECSAutoscalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 20
+      MinCapacity: 1
+      ResourceId: !Sub
+        - 'service/${clusterName}/${serviceName}'
+        - clusterName: Delhi-Cluster
+          serviceName: !GetAtt ECSService.Name
+      RoleARN: arn:aws:iam::484907512368:role/ecsAutoscaleRole
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs

@@ -1,0 +1,17 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  EcrRepositoryName:
+    Type: String
+    Description: Name of the ECR repository
+
+Outputs:
+  ECRRepositoryURL:
+    Description: URL of the ECR repository
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepositoryName}"
+
+Resources:
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref EcrRepositoryName
